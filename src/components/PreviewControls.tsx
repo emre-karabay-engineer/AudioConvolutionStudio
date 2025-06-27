@@ -147,54 +147,58 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
         throw new Error('Invalid URL')
       }
 
-      // Load audio
-      const response = await fetch(audioUrl)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      // Ensure audio element exists and is set up
+      if (!audioRef.current) {
+        throw new Error('Audio element not available')
+      }
+
+      // Set the audio source
+      audioRef.current.src = audioUrl
+      
+      // Set up event listeners
+      audioRef.current.onloadedmetadata = () => {
+        setDuration(audioRef.current?.duration || 0)
       }
       
-      const arrayBuffer = await response.arrayBuffer()
-      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer)
-      
-      // Create audio source
-      const source = audioContextRef.current.createBufferSource()
-      source.buffer = audioBuffer
-      
-      // Create gain node for volume control
-      const gainNode = audioContextRef.current.createGain()
-      gainNode.gain.value = volume / 100
-      
-      // Connect nodes
-      source.connect(gainNode)
-      gainNode.connect(audioContextRef.current.destination)
-      
-      // Start playback
-      source.start(0)
-      setIsPlaying(true)
-      setCurrentTime(0)
-      onPlaybackStateChange(true)
-      
-      // Track start time for progress calculation
-      const startTime = audioContextRef.current.currentTime
-      
-      // Update progress
-      const updateProgress = () => {
-        if (audioContextRef.current && source.playbackRate.value > 0) {
-          const elapsed = audioContextRef.current.currentTime - startTime
-          const progress = (elapsed / audioBuffer.duration) * 100
-          setCurrentTime(Math.min(progress, 100))
-        }
-        if (isPlaying) {
-          requestAnimationFrame(updateProgress)
-        }
+      audioRef.current.ontimeupdate = () => {
+        setCurrentTime(audioRef.current?.currentTime || 0)
       }
-      updateProgress()
       
-      source.onended = () => {
+      audioRef.current.onended = () => {
         setIsPlaying(false)
         setCurrentTime(0)
         onPlaybackStateChange(false)
       }
+
+      // Wait for audio to load
+      await new Promise((resolve, reject) => {
+        if (!audioRef.current) return reject('No audio element')
+        
+        const timeout = setTimeout(() => {
+          reject('Audio loading timeout')
+        }, 10000)
+        
+        audioRef.current.oncanplay = () => {
+          clearTimeout(timeout)
+          resolve(true)
+        }
+        
+        audioRef.current.onerror = () => {
+          clearTimeout(timeout)
+          reject('Audio loading failed')
+        }
+        
+        audioRef.current.load()
+      })
+
+      // Play audio
+      if (!audioRef.current) {
+        throw new Error('Audio element not available for playback')
+      }
+      
+      await audioRef.current.play()
+      setIsPlaying(true)
+      onPlaybackStateChange(true)
       
     } catch (error) {
       alert(`Error playing audio: ${error}`)
