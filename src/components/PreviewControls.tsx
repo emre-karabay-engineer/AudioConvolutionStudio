@@ -6,6 +6,7 @@ interface PreviewControlsProps {
   audioFile: AudioFile | null
   impulseResponse: ImpulseResponse | null
   outputFile: string | null
+  currentTrack: 'input' | 'ir' | 'output'
   onPlaybackStateChange: (playing: boolean) => void
   onTrackChange: (track: 'input' | 'ir' | 'output') => void
   setOutputFile: (file: string | null) => void
@@ -15,13 +16,13 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
   audioFile, 
   impulseResponse, 
   outputFile,
+  currentTrack,
   onPlaybackStateChange,
   onTrackChange,
   setOutputFile
 }) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isPlayingOriginal, setIsPlayingOriginal] = useState(false)
-  const [currentTrack, setCurrentTrack] = useState<'input' | 'ir' | 'output'>('input')
   const [volume, setVolume] = useState(80)
   const [currentTime, setCurrentTime] = useState(0)
   const [originalCurrentTime, setOriginalCurrentTime] = useState(0)

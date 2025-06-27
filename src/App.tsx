@@ -161,6 +161,7 @@ function App() {
               audioFile={audioFile}
               impulseResponse={impulseResponse}
               outputFile={outputFile}
+              currentTrack={currentTrack}
               onPlaybackStateChange={handlePlaybackStateChange}
               onTrackChange={handleTrackChange}
               setOutputFile={setOutputFile}
