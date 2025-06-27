@@ -13,5 +13,6 @@ export default defineConfig({
     sourcemap: true
   },
   publicDir: 'assets',
-  assetsInclude: ['**/*.wav', '**/*.mp3', '**/*.flac', '**/*.aiff']
+  assetsInclude: ['**/*.wav', '**/*.mp3', '**/*.flac', '**/*.aiff'],
+  base: process.env.NODE_ENV === 'production' ? '/AudioConvolutionProject/' : '/'
 }) 

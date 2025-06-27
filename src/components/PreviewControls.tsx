@@ -6,9 +6,7 @@ interface PreviewControlsProps {
   audioFile: AudioFile | null
   impulseResponse: ImpulseResponse | null
   outputFile: string | null
-  currentTrack: 'input' | 'ir' | 'output'
   onPlaybackStateChange: (playing: boolean) => void
-  onTrackChange: (track: 'input' | 'ir' | 'output') => void
   setOutputFile: (file: string | null) => void
 }
 
@@ -16,13 +14,12 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
   audioFile, 
   impulseResponse, 
   outputFile,
-  currentTrack,
   onPlaybackStateChange,
-  onTrackChange,
   setOutputFile
 }) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isPlayingOriginal, setIsPlayingOriginal] = useState(false)
+  const [currentTrack, setCurrentTrack] = useState<'input' | 'ir' | 'output'>('input')
   const [volume, setVolume] = useState(80)
   const [currentTime, setCurrentTime] = useState(0)
   const [originalCurrentTime, setOriginalCurrentTime] = useState(0)
@@ -110,11 +107,6 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
     onPlaybackStateChange(isPlaying)
   }, [isPlaying, onPlaybackStateChange])
 
-  // Notify parent of track changes
-  useEffect(() => {
-    onTrackChange(currentTrack)
-  }, [currentTrack, onTrackChange])
-
   const getCurrentAudioFile = () => {
     switch (currentTrack) {
       case 'input':
@@ -131,55 +123,54 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
   const handlePlay = async () => {
     const currentFile = getCurrentAudioFile()
     if (!currentFile || !audioContextRef.current) {
+      console.error('No current file or audio context:', { currentFile, audioContext: audioContextRef.current })
       return
     }
 
     try {
-      let audioUrl = currentFile.path
+      console.log('Attempting to play:', currentFile.path)
       
-      console.log('Original path:', audioUrl)
-      console.log('Current track:', currentTrack)
-      
-      // Construct proper URLs for different file types
-      if (currentTrack === 'input') {
-        // Input files are served from the backend
-        if (audioUrl.startsWith('/')) {
-          audioUrl = `http://localhost:3001${audioUrl}`
-        } else {
-          audioUrl = `http://localhost:3001/${audioUrl}`
-        }
-      } else if (currentTrack === 'ir') {
-        // IR files use converted versions for browser compatibility
-        if (impulseResponse) {
-          audioUrl = `http://localhost:3001/converted_ir_${impulseResponse.name}`
-        }
-      } else if (currentTrack === 'output') {
-        // Output files use converted versions
-        if (audioUrl.includes('output_')) {
-          const convertedUrl = audioUrl.replace('output_', 'converted_output_')
-          audioUrl = `http://localhost:3001/${convertedUrl}`
-        } else {
-          audioUrl = `http://localhost:3001/${audioUrl}`
-        }
-      }
-      
-      console.log('Final audio URL:', audioUrl)
-      
-      // Validate URL
-      if (!audioUrl || audioUrl === 'null' || audioUrl === 'undefined') {
-        throw new Error('Invalid URL')
+      // Resume audio context if suspended
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume()
       }
 
-      // Ensure audio element exists and is set up
+      // Set audio source with proper URL
+      let audioUrl = currentFile.path
+      
+      // If it's a relative path, make it absolute to the backend server
+      if (audioUrl.startsWith('/')) {
+        audioUrl = `http://localhost:3001${audioUrl}`
+      }
+      
+      // For impulse responses, try to use converted 16-bit version
+      if (currentTrack === 'ir' && audioUrl.includes('/impulse-responses/')) {
+        const irPath = audioUrl.replace('http://localhost:3001/impulse-responses/', '')
+        const convertedUrl = `http://localhost:3001/convert-ir?path=${encodeURIComponent(irPath)}`
+        console.log('Using converted IR:', convertedUrl)
+        audioUrl = convertedUrl
+      }
+      
+      // Ensure the URL is properly encoded
+      try {
+        audioUrl = new URL(audioUrl).href
+      } catch (error) {
+        console.error('Invalid URL:', audioUrl)
+        throw new Error(`Invalid audio URL: ${audioUrl}`)
+      }
+      
+      console.log('Loading audio from URL:', audioUrl)
+      console.log('Current file:', currentFile)
+      
       if (!audioRef.current) {
         throw new Error('Audio element not available')
       }
-
-      // Set the audio source
+      
       audioRef.current.src = audioUrl
       
       // Set up event listeners
       audioRef.current.onloadedmetadata = () => {
+        console.log('Audio metadata loaded:', audioRef.current?.duration)
         setDuration(audioRef.current?.duration || 0)
       }
       
@@ -190,27 +181,41 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       audioRef.current.onended = () => {
         setIsPlaying(false)
         setCurrentTime(0)
-        onPlaybackStateChange(false)
       }
 
-      // Wait for audio to load
+      // Add error handling
+      audioRef.current.onerror = (e) => {
+        console.error('Audio error:', e)
+        console.error('Audio error details:', audioRef.current?.error)
+        const errorMsg = audioRef.current?.error?.message || 'Unknown error'
+        console.error('Audio URL that failed:', audioUrl)
+        alert(`Audio error: ${errorMsg}. This might be due to CORS restrictions or file format issues.`)
+        setIsPlaying(false)
+      }
+
+      // Wait for audio to load before playing
       await new Promise((resolve, reject) => {
         if (!audioRef.current) return reject('No audio element')
         
         const timeout = setTimeout(() => {
-          reject('Audio loading timeout')
-        }, 10000)
+          console.error('Audio loading timeout for URL:', audioUrl)
+          reject('Audio loading timeout - the file might be too large or the server might be slow')
+        }, 15000) // Increased timeout to 15 seconds
         
         audioRef.current.oncanplay = () => {
           clearTimeout(timeout)
+          console.log('Audio can play, duration:', audioRef.current?.duration)
           resolve(true)
         }
         
-        audioRef.current.onerror = () => {
+        audioRef.current.onerror = (e) => {
           clearTimeout(timeout)
-          reject('Audio loading failed')
+          const error = audioRef.current?.error
+          console.error('Audio loading failed:', error)
+          reject(`Audio loading failed: ${error?.message || 'Unknown error'} for URL: ${audioUrl}`)
         }
         
+        // Also try to load the audio
         audioRef.current.load()
       })
 
@@ -221,10 +226,32 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       
       await audioRef.current.play()
       setIsPlaying(true)
-      onPlaybackStateChange(true)
-      
+      console.log('Audio playback started successfully')
     } catch (error) {
-      alert(`Error playing audio: ${error}`)
+      console.error('Error playing audio:', error)
+      console.error('Current file:', currentFile)
+      console.error('Audio element:', audioRef.current)
+      
+      let errorMessage = 'Error playing audio. '
+      if (error instanceof Error) {
+        errorMessage += error.message
+      } else if (typeof error === 'string') {
+        errorMessage += error
+      } else {
+        errorMessage += 'Please check the file format and try again.'
+      }
+      
+      // Add helpful debugging info
+      if (errorMessage.includes('CORS')) {
+        errorMessage += '\n\nThis might be due to CORS restrictions. Try using the sample files instead.'
+      }
+      
+      if (errorMessage.includes('timeout')) {
+        errorMessage += '\n\nThe file might be too large or the server might be slow. Try a smaller file.'
+      }
+      
+      alert(errorMessage)
+      setIsPlaying(false)
     }
   }
 
@@ -233,14 +260,14 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       audioRef.current.pause()
     }
     setIsPlaying(false)
-    onPlaybackStateChange(false)
   }
 
   const handleTrackChange = (track: 'input' | 'ir' | 'output') => {
-    onTrackChange(track)
-    setIsPlaying(false)
+    setCurrentTrack(track)
+    if (isPlaying) {
+      handlePause()
+    }
     setCurrentTime(0)
-    onPlaybackStateChange(false)
   }
 
   const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {

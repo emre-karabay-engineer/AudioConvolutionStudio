@@ -36,7 +36,6 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTrack, setCurrentTrack] = useState<'input' | 'ir' | 'output'>('input')
   const [settings, setSettings] = useState<AudioSettings>({
     dryWet: 50,
     inputGain: 0,
@@ -120,10 +119,6 @@ function App() {
     setIsPlaying(playing)
   }
 
-  const handleTrackChange = (track: 'input' | 'ir' | 'output') => {
-    setCurrentTrack(track)
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
@@ -163,9 +158,7 @@ function App() {
               audioFile={audioFile}
               impulseResponse={impulseResponse}
               outputFile={outputFile}
-              currentTrack={currentTrack}
               onPlaybackStateChange={handlePlaybackStateChange}
-              onTrackChange={handleTrackChange}
               setOutputFile={setOutputFile}
             />
             
@@ -173,7 +166,6 @@ function App() {
               audioFile={audioFile}
               impulseResponse={impulseResponse}
               outputFile={outputFile}
-              currentTrack={currentTrack}
               isPlaying={isPlaying}
             />
             

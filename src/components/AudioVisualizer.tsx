@@ -6,7 +6,6 @@ interface AudioVisualizerProps {
   audioFile: AudioFile | null
   impulseResponse: ImpulseResponse | null
   outputFile: string | null
-  currentTrack: 'input' | 'ir' | 'output'
   isPlaying: boolean
 }
 
@@ -14,7 +13,6 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   audioFile, 
   impulseResponse, 
   outputFile, 
-  currentTrack,
   isPlaying 
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -23,51 +21,30 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
 
-  // Find the existing audio element from PreviewControls
-  const findAudioElement = (): HTMLAudioElement | null => {
-    // Look for audio elements in the document
-    const audioElements = document.querySelectorAll('audio')
+  // Find the current track from the DOM
+  const getCurrentTrack = (): 'input' | 'ir' | 'output' => {
+    // Look for audio elements with data-track attribute
+    const audioElements = document.querySelectorAll('audio[data-track]')
     
     for (const audio of audioElements) {
-      // First, try to find by data-track attribute
       const dataTrack = audio.getAttribute('data-track')
-      if (dataTrack === currentTrack) {
-        return audio
+      if (dataTrack === 'input' || dataTrack === 'ir' || dataTrack === 'output') {
+        return dataTrack as 'input' | 'ir' | 'output'
       }
-      
-      // Check if this audio element is the one we want
-      // For blob URLs, we need to check if it's currently loaded and matches our track
-      if (audio.src) {
-        // If it's a blob URL, check if it's the currently active audio
-        if (audio.src.startsWith('blob:')) {
-          // Check if this audio element is currently loaded and matches our track
-          if (audio.readyState >= 2 && !audio.paused) { // HAVE_CURRENT_DATA or higher and playing
-            return audio
-          }
-        } else {
-          // For regular URLs, check if it matches our track
-          const currentTrackName = getCurrentTrackName().toLowerCase()
-          const currentTrackPath = getCurrentTrackPath().toLowerCase()
-          
-          if (audio.src.toLowerCase().includes(currentTrackName) ||
-              audio.src.toLowerCase().includes(currentTrackPath) ||
-              (currentTrack === 'output' && audio.src.includes('converted_output')) ||
-              (currentTrack === 'input' && audio.src.includes('uploads')) ||
-              (currentTrack === 'ir' && audio.src.includes('impulse-responses'))) {
-            return audio
-          }
+    }
+    
+    // Fallback: try to determine from the currently playing audio
+    for (const audio of audioElements) {
+      const audioElement = audio as HTMLAudioElement
+      if (audioElement.src && !audioElement.paused && audioElement.readyState >= 2) {
+        const dataTrack = audio.getAttribute('data-track')
+        if (dataTrack === 'input' || dataTrack === 'ir' || dataTrack === 'output') {
+          return dataTrack as 'input' | 'ir' | 'output'
         }
       }
     }
     
-    // If no specific match found, try to find any audio element that's currently playing
-    for (const audio of audioElements) {
-      if (audio.src && !audio.paused && audio.readyState >= 2) {
-        return audio
-      }
-    }
-    
-    return null
+    return 'input' // Default fallback
   }
 
   // Setup visualization when track changes or playing state changes
@@ -189,7 +166,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         cancelAnimationFrame(animationRef.current)
       }
     }
-  }, [currentTrack, isPlaying])
+  }, [isPlaying])
 
   const startVisualization = (analyser: AnalyserNode, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     const bufferLength = analyser.frequencyBinCount
@@ -254,8 +231,55 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
     draw()
   }
 
+  const findAudioElement = (): HTMLAudioElement | null => {
+    // Look for audio elements in the document
+    const audioElements = document.querySelectorAll('audio')
+    
+    for (const audio of audioElements) {
+      // First, try to find by data-track attribute
+      const dataTrack = audio.getAttribute('data-track')
+      if (dataTrack === getCurrentTrack()) {
+        return audio as HTMLAudioElement
+      }
+      
+      // Check if this audio element is the one we want
+      // For blob URLs, we need to check if it's currently loaded and matches our track
+      if (audio.src) {
+        // If it's a blob URL, check if it's the currently active audio
+        if (audio.src.startsWith('blob:')) {
+          // Check if this audio element is currently loaded and matches our track
+          if (audio.readyState >= 2 && !audio.paused) { // HAVE_CURRENT_DATA or higher and playing
+            return audio as HTMLAudioElement
+          }
+        } else {
+          // For regular URLs, check if it matches our track
+          const currentTrackName = getCurrentTrackName().toLowerCase()
+          const currentTrackPath = getCurrentTrackPath().toLowerCase()
+          
+          if (audio.src.toLowerCase().includes(currentTrackName) ||
+              audio.src.toLowerCase().includes(currentTrackPath) ||
+              (getCurrentTrack() === 'output' && audio.src.includes('converted_output')) ||
+              (getCurrentTrack() === 'input' && audio.src.includes('uploads')) ||
+              (getCurrentTrack() === 'ir' && audio.src.includes('impulse-responses'))) {
+            return audio as HTMLAudioElement
+          }
+        }
+      }
+    }
+    
+    // If no specific match found, try to find any audio element that's currently playing
+    for (const audio of audioElements) {
+      const audioElement = audio as HTMLAudioElement
+      if (audioElement.src && !audioElement.paused && audioElement.readyState >= 2) {
+        return audioElement
+      }
+    }
+    
+    return null
+  }
+
   const getCurrentTrackName = () => {
-    switch (currentTrack) {
+    switch (getCurrentTrack()) {
       case 'input':
         return audioFile?.name || ''
       case 'ir':
@@ -268,7 +292,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   }
 
   const getCurrentTrackPath = () => {
-    switch (currentTrack) {
+    switch (getCurrentTrack()) {
       case 'input':
         return audioFile?.path || ''
       case 'ir':
@@ -323,12 +347,12 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         {!error && !isConnected && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90 rounded">
             <p className="text-gray-400 text-center px-4">
-              {currentTrack === 'input' && !audioFile && 'No input audio selected'}
-              {currentTrack === 'ir' && !impulseResponse && 'No impulse response selected'}
-              {currentTrack === 'output' && !outputFile && 'No output audio available'}
-              {((currentTrack === 'input' && audioFile) || 
-                (currentTrack === 'ir' && impulseResponse) || 
-                (currentTrack === 'output' && outputFile)) && 
+              {getCurrentTrack() === 'input' && !audioFile && 'No input audio selected'}
+              {getCurrentTrack() === 'ir' && !impulseResponse && 'No impulse response selected'}
+              {getCurrentTrack() === 'output' && !outputFile && 'No output audio available'}
+              {((getCurrentTrack() === 'input' && audioFile) || 
+                (getCurrentTrack() === 'ir' && impulseResponse) || 
+                (getCurrentTrack() === 'output' && outputFile)) && 
                 'Click play to start visualization'}
             </p>
           </div>
