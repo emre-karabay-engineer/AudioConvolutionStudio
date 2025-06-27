@@ -137,10 +137,27 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
     try {
       let audioUrl = currentFile.path
       
-      // For IR files, use converted version for browser compatibility
-      if (currentTrack === 'ir' && impulseResponse) {
-        const convertedUrl = `/converted_ir_${impulseResponse.name}`
-        audioUrl = convertedUrl
+      // Construct proper URLs for different file types
+      if (currentTrack === 'input') {
+        // Input files are served from the backend
+        if (audioUrl.startsWith('/')) {
+          audioUrl = `http://localhost:3001${audioUrl}`
+        } else {
+          audioUrl = `http://localhost:3001/${audioUrl}`
+        }
+      } else if (currentTrack === 'ir') {
+        // IR files use converted versions for browser compatibility
+        if (impulseResponse) {
+          audioUrl = `http://localhost:3001/converted_ir_${impulseResponse.name}`
+        }
+      } else if (currentTrack === 'output') {
+        // Output files use converted versions
+        if (audioUrl.includes('output_')) {
+          const convertedUrl = audioUrl.replace('output_', 'converted_output_')
+          audioUrl = `http://localhost:3001/${convertedUrl}`
+        } else {
+          audioUrl = `http://localhost:3001/${audioUrl}`
+        }
       }
       
       // Validate URL
