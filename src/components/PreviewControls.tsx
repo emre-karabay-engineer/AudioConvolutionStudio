@@ -97,61 +97,6 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
     }
   }, [currentTrack])
 
-  // Call C++ backend for audio processing
-  const processAudioWithBackend = async () => {
-    if (!audioFile || !impulseResponse) {
-      alert('Please select both an audio file and an impulse response')
-      return
-    }
-
-    try {
-      console.log('Processing audio with backend...')
-      
-      const formData = new FormData()
-      
-      // Fetch the audio file from its path
-      const audioResponse = await fetch(audioFile.path)
-      const audioBlob = await audioResponse.blob()
-      formData.append('audioFile', audioBlob, audioFile.name)
-      
-      // Fetch the impulse response file from its path
-      const irResponse = await fetch(impulseResponse.path)
-      const irBlob = await irResponse.blob()
-      formData.append('impulseResponse', irBlob, impulseResponse.name)
-      
-      // Add audio settings
-      const settings = {
-        dryWet: 50,
-        inputGain: 0,
-        outputGain: 0,
-        normalize: true
-      }
-      formData.append('settings', JSON.stringify(settings))
-      
-      const response = await fetch('http://localhost:3001/process-audio', {
-        method: 'POST',
-        body: formData
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const result = await response.json()
-      console.log('Processing result:', result)
-      
-      if (result.success) {
-        setOutputFile(result.outputFile)
-        alert('Audio processing completed successfully!')
-      } else {
-        throw new Error(result.error || 'Processing failed')
-      }
-    } catch (error) {
-      console.error('Error processing audio:', error)
-      alert(`Error processing audio: ${error}`)
-    }
-  }
-
   // Update volume when it changes
   useEffect(() => {
     if (gainNodeRef.current) {
@@ -174,9 +119,9 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       case 'input':
         return audioFile
       case 'ir':
-        return impulseResponse ? { ...impulseResponse, path: impulseResponse.path } : null
+        return impulseResponse
       case 'output':
-        return outputFile ? { name: outputFile, path: outputFile } : null
+        return outputFile ? { name: 'Output', path: outputFile } : null
       default:
         return null
     }
@@ -185,189 +130,24 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
   const handlePlay = async () => {
     const currentFile = getCurrentAudioFile()
     if (!currentFile || !audioContextRef.current) {
-      console.error('No current file or audio context:', { currentFile, audioContext: audioContextRef.current })
       return
     }
 
     try {
-      console.log('Attempting to play:', currentFile.path)
-      
-      // Resume audio context if suspended
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume()
-      }
-
-      // Set audio source with proper URL
       let audioUrl = currentFile.path
       
-      // If it's a relative path, make it absolute to the backend server
-      if (audioUrl.startsWith('/')) {
-        audioUrl = `http://localhost:3001${audioUrl}`
-      }
-      
-      // For impulse responses, try to use converted 16-bit version
-      if (currentTrack === 'ir' && audioUrl.includes('/impulse-responses/')) {
-        const irPath = audioUrl.replace('http://localhost:3001/impulse-responses/', '')
-        const convertedUrl = `http://localhost:3001/convert-ir?path=${encodeURIComponent(irPath)}`
-        console.log('Using converted IR:', convertedUrl)
+      // For IR files, use converted version for browser compatibility
+      if (currentTrack === 'ir' && impulseResponse) {
+        const convertedUrl = `/converted_ir_${impulseResponse.name}`
         audioUrl = convertedUrl
       }
       
-      // Ensure the URL is properly encoded
-      try {
-        audioUrl = new URL(audioUrl).href
-      } catch (error) {
-        console.error('Invalid URL:', audioUrl)
-        throw new Error(`Invalid audio URL: ${audioUrl}`)
-      }
-      
-      console.log('Loading audio from URL:', audioUrl)
-      console.log('Current file:', currentFile)
-      
-      if (!audioRef.current) {
-        throw new Error('Audio element not available')
-      }
-      
-      audioRef.current.src = audioUrl
-      
-      // Set up event listeners
-      audioRef.current.onloadedmetadata = () => {
-        console.log('Audio metadata loaded:', audioRef.current?.duration)
-        setDuration(audioRef.current?.duration || 0)
-      }
-      
-      audioRef.current.ontimeupdate = () => {
-        setCurrentTime(audioRef.current?.currentTime || 0)
-      }
-      
-      audioRef.current.onended = () => {
-        setIsPlaying(false)
-        setCurrentTime(0)
+      // Validate URL
+      if (!audioUrl || audioUrl === 'null' || audioUrl === 'undefined') {
+        throw new Error('Invalid URL')
       }
 
-      // Add error handling
-      audioRef.current.onerror = (e) => {
-        console.error('Audio error:', e)
-        console.error('Audio error details:', audioRef.current?.error)
-        const errorMsg = audioRef.current?.error?.message || 'Unknown error'
-        console.error('Audio URL that failed:', audioUrl)
-        alert(`Audio error: ${errorMsg}. This might be due to CORS restrictions or file format issues.`)
-        setIsPlaying(false)
-      }
-
-      // Wait for audio to load before playing
-      await new Promise((resolve, reject) => {
-        if (!audioRef.current) return reject('No audio element')
-        
-        const timeout = setTimeout(() => {
-          console.error('Audio loading timeout for URL:', audioUrl)
-          reject('Audio loading timeout - the file might be too large or the server might be slow')
-        }, 15000) // Increased timeout to 15 seconds
-        
-        audioRef.current.oncanplay = () => {
-          clearTimeout(timeout)
-          console.log('Audio can play, duration:', audioRef.current?.duration)
-          resolve(true)
-        }
-        
-        audioRef.current.onerror = (e) => {
-          clearTimeout(timeout)
-          const error = audioRef.current?.error
-          console.error('Audio loading failed:', error)
-          reject(`Audio loading failed: ${error?.message || 'Unknown error'} for URL: ${audioUrl}`)
-        }
-        
-        // Also try to load the audio
-        audioRef.current.load()
-      })
-
-      // Play audio
-      if (!audioRef.current) {
-        throw new Error('Audio element not available for playback')
-      }
-      
-      await audioRef.current.play()
-      setIsPlaying(true)
-      console.log('Audio playback started successfully')
-    } catch (error) {
-      console.error('Error playing audio:', error)
-      console.error('Current file:', currentFile)
-      console.error('Audio element:', audioRef.current)
-      
-      let errorMessage = 'Error playing audio. '
-      if (error instanceof Error) {
-        errorMessage += error.message
-      } else if (typeof error === 'string') {
-        errorMessage += error
-      } else {
-        errorMessage += 'Please check the file format and try again.'
-      }
-      
-      // Add helpful debugging info
-      if (errorMessage.includes('CORS')) {
-        errorMessage += '\n\nThis might be due to CORS restrictions. Try using the sample files instead.'
-      }
-      
-      if (errorMessage.includes('timeout')) {
-        errorMessage += '\n\nThe file might be too large or the server might be slow. Try a smaller file.'
-      }
-      
-      alert(errorMessage)
-      setIsPlaying(false)
-    }
-  }
-
-  const handlePause = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      setIsPlaying(false)
-    }
-  }
-
-  const handleTrackChange = (track: 'input' | 'ir' | 'output') => {
-    setCurrentTrack(track)
-    if (isPlaying) {
-      handlePause()
-    }
-    setCurrentTime(0)
-  }
-
-  const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = parseFloat(event.target.value)
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime
-      setCurrentTime(newTime)
-    }
-  }
-
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60)
-    const seconds = Math.floor(time % 60)
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
-
-  // Play processed audio
-  const playProcessedAudio = async () => {
-    if (!outputFile) {
-      alert('No processed audio available')
-      return
-    }
-
-    try {
-      console.log('Playing processed audio:', outputFile)
-      
-      // Ensure audio context is running
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-      }
-      
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume()
-      }
-      
-      // Use the converted 16-bit version if available, otherwise use the original processed file
-      const audioUrl = outputFile.replace('/Outputs/', '/Outputs/converted_')
-      
+      // Load audio
       const response = await fetch(audioUrl)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
@@ -376,18 +156,23 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       const arrayBuffer = await response.arrayBuffer()
       const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer)
       
+      // Create audio source
       const source = audioContextRef.current.createBufferSource()
-      const gainNode = audioContextRef.current.createGain()
-      
       source.buffer = audioBuffer
+      
+      // Create gain node for volume control
+      const gainNode = audioContextRef.current.createGain()
+      gainNode.gain.value = volume / 100
+      
+      // Connect nodes
       source.connect(gainNode)
       gainNode.connect(audioContextRef.current.destination)
       
-      gainNode.gain.setValueAtTime(volume / 100, audioContextRef.current.currentTime)
-      
+      // Start playback
       source.start(0)
       setIsPlaying(true)
       setCurrentTime(0)
+      onPlaybackStateChange(true)
       
       // Track start time for progress calculation
       const startTime = audioContextRef.current.currentTime
@@ -408,84 +193,41 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       source.onended = () => {
         setIsPlaying(false)
         setCurrentTime(0)
+        onPlaybackStateChange(false)
       }
       
-      console.log('Processed audio playback started successfully')
     } catch (error) {
-      console.error('Error playing processed audio:', error)
       alert(`Error playing audio: ${error}`)
     }
   }
 
-  // Play original audio
-  const playOriginalAudio = async () => {
-    if (!audioFile) {
-      alert('No original audio available')
-      return
+  const handlePause = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
     }
+    setIsPlaying(false)
+    onPlaybackStateChange(false)
+  }
 
-    try {
-      console.log('Playing original audio:', audioFile.path)
-      
-      // Ensure audio context is running
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-      }
-      
-      if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume()
-      }
-      
-      // Use the converted 16-bit version
-      const audioUrl = audioFile.path.replace('/assets/audio/', '/Outputs/converted_')
-      
-      const response = await fetch(audioUrl)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const arrayBuffer = await response.arrayBuffer()
-      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer)
-      
-      const source = audioContextRef.current.createBufferSource()
-      const gainNode = audioContextRef.current.createGain()
-      
-      source.buffer = audioBuffer
-      source.connect(gainNode)
-      gainNode.connect(audioContextRef.current.destination)
-      
-      gainNode.gain.setValueAtTime(volume / 100, audioContextRef.current.currentTime)
-      
-      source.start(0)
-      setIsPlayingOriginal(true)
-      setOriginalCurrentTime(0)
-      
-      // Track start time for progress calculation
-      const startTime = audioContextRef.current.currentTime
-      
-      // Update progress
-      const updateProgress = () => {
-        if (audioContextRef.current && source.playbackRate.value > 0) {
-          const elapsed = audioContextRef.current.currentTime - startTime
-          const progress = (elapsed / audioBuffer.duration) * 100
-          setOriginalCurrentTime(Math.min(progress, 100))
-        }
-        if (isPlayingOriginal) {
-          requestAnimationFrame(updateProgress)
-        }
-      }
-      updateProgress()
-      
-      source.onended = () => {
-        setIsPlayingOriginal(false)
-        setOriginalCurrentTime(0)
-      }
-      
-      console.log('Original audio playback started successfully')
-    } catch (error) {
-      console.error('Error playing original audio:', error)
-      alert(`Error playing audio: ${error}`)
+  const handleTrackChange = (track: 'input' | 'ir' | 'output') => {
+    onTrackChange(track)
+    setIsPlaying(false)
+    setCurrentTime(0)
+    onPlaybackStateChange(false)
+  }
+
+  const handleSeek = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(event.target.value)
+    setCurrentTime(newTime)
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime
     }
+  }
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60)
+    const seconds = Math.floor(time % 60)
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
   return (
@@ -496,42 +238,6 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       </h3>
       
       <div className="space-y-4">
-        {/* Test Buttons */}
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium text-gray-700">Audio System Tests</h4>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={processAudioWithBackend}
-              className="btn-secondary text-sm py-2"
-            >
-              Test Backend Processing
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Preview Buttons */}
-        {outputFile && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-700">Quick Preview</h4>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={playProcessedAudio}
-                className="btn-primary text-sm py-2"
-              >
-                Play Processed Audio
-              </button>
-              {audioFile && (
-                <button
-                  onClick={playOriginalAudio}
-                  className="btn-secondary text-sm py-2"
-                >
-                  Play Original Audio
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Track Selection */}
         <div className="grid grid-cols-3 gap-2">
           <button
