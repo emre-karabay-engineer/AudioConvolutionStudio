@@ -137,6 +137,9 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
     try {
       let audioUrl = currentFile.path
       
+      console.log('Original path:', audioUrl)
+      console.log('Current track:', currentTrack)
+      
       // Construct proper URLs for different file types
       if (currentTrack === 'input') {
         // Input files are served from the backend
@@ -159,6 +162,8 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
           audioUrl = `http://localhost:3001/${audioUrl}`
         }
       }
+      
+      console.log('Final audio URL:', audioUrl)
       
       // Validate URL
       if (!audioUrl || audioUrl === 'null' || audioUrl === 'undefined') {

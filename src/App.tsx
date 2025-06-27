@@ -97,6 +97,8 @@ function App() {
       const result = await response.json()
       
       if (result.success) {
+        console.log('Processing result:', result)
+        console.log('Output file path:', result.outputFile)
         setOutputFile(result.outputFile)
         setStatus('Processing completed successfully!')
       } else {
