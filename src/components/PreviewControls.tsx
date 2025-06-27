@@ -37,12 +37,10 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
       // Store globally for other components to use
       ;(window as any).__audioContext = audioContextRef.current
-      console.log('Audio context created:', audioContextRef.current.state)
     }
     return () => {
       // Clean up audio element when component unmounts
       if (audioRef.current && audioRef.current.parentNode) {
-        console.log('PreviewControls: Cleaning up audio element on unmount')
         audioRef.current.parentNode.removeChild(audioRef.current)
         audioRef.current = null
       }
@@ -59,7 +57,6 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
     const existingAudio = document.querySelector(`audio[data-track="${currentTrack}"]`) as HTMLAudioElement
     
     if (!audioRef.current && !existingAudio) {
-      console.log('PreviewControls: Creating new audio element for track:', currentTrack)
       audioRef.current = new Audio()
       audioRef.current.crossOrigin = 'anonymous'
       audioRef.current.preload = 'auto'
@@ -68,7 +65,6 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       
       // Add to DOM so other components can find it
       document.body.appendChild(audioRef.current)
-      console.log('PreviewControls: Audio element added to DOM, total audio elements:', document.querySelectorAll('audio').length)
       
       // Connect to audio context if available
       if (audioContextRef.current) {
@@ -94,60 +90,12 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       }
     } else if (existingAudio && !audioRef.current) {
       // Use existing audio element
-      console.log('PreviewControls: Using existing audio element for track:', currentTrack)
       audioRef.current = existingAudio
     } else if (audioRef.current) {
       // Update the track identifier if audio element already exists
-      console.log('PreviewControls: Updating existing audio element for track:', currentTrack)
       audioRef.current.setAttribute('data-track', currentTrack)
     }
   }, [currentTrack])
-
-  // Test audio context on user interaction
-  const testAudioContext = async () => {
-    try {
-      console.log('Testing Web Audio API...')
-      
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-        console.log('Created new audio context:', audioContextRef.current.state)
-      }
-      
-      console.log('Audio context state:', audioContextRef.current.state)
-      console.log('Audio context sample rate:', audioContextRef.current.sampleRate)
-      
-      if (audioContextRef.current.state === 'suspended') {
-        console.log('Resuming audio context...')
-        await audioContextRef.current.resume()
-        console.log('Audio context resumed, new state:', audioContextRef.current.state)
-      }
-      
-      if (audioContextRef.current.state !== 'running') {
-        throw new Error(`Audio context not running, state: ${audioContextRef.current.state}`)
-      }
-      
-      console.log('Audio context is ready:', audioContextRef.current.state)
-      
-      // Create a simple test tone to verify audio is working
-      const oscillator = audioContextRef.current.createOscillator()
-      const gainNode = audioContextRef.current.createGain()
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContextRef.current.destination)
-      
-      oscillator.frequency.setValueAtTime(440, audioContextRef.current.currentTime) // A4 note
-      gainNode.gain.setValueAtTime(0.3, audioContextRef.current.currentTime) // Higher volume
-      
-      oscillator.start(audioContextRef.current.currentTime)
-      oscillator.stop(audioContextRef.current.currentTime + 1.0) // Play for 1 second
-      
-      console.log('Test tone started successfully')
-      alert('Audio system test successful! You should hear a 1-second tone.')
-    } catch (error) {
-      console.error('Error testing audio context:', error)
-      alert(`Audio system test failed: ${error}`)
-    }
-  }
 
   // Call C++ backend for audio processing
   const processAudioWithBackend = async () => {
@@ -552,12 +500,6 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
         <div className="space-y-2">
           <h4 className="text-sm font-medium text-gray-700">Audio System Tests</h4>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={testAudioContext}
-              className="btn-secondary text-sm py-2"
-            >
-              Test Audio Context
-            </button>
             <button
               onClick={processAudioWithBackend}
               className="btn-secondary text-sm py-2"

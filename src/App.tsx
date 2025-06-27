@@ -47,57 +47,63 @@ function App() {
     stereoWidth: 100,
     normalize: true
   })
+  const [status, setStatus] = useState<string>('')
 
-  const handleProcess = async () => {
+  const handleProcessAudio = async () => {
     if (!audioFile || !impulseResponse) {
-      alert('Please select both an audio file and an impulse response')
+      setStatus('Please select both an audio file and an impulse response')
       return
     }
 
+    setStatus('Processing audio...')
     setIsProcessing(true)
     setProcessingProgress(0)
 
     try {
-      // Create FormData for file upload
       const formData = new FormData()
       
-      // Fetch the audio file
+      // Fetch the audio file from its path
       const audioResponse = await fetch(audioFile.path)
       const audioBlob = await audioResponse.blob()
       formData.append('audioFile', audioBlob, audioFile.name)
       
-      // Fetch the impulse response file
+      // Fetch the impulse response file from its path
       const irResponse = await fetch(impulseResponse.path)
       const irBlob = await irResponse.blob()
       formData.append('impulseResponse', irBlob, impulseResponse.name)
       
-      // Add settings
-      formData.append('settings', JSON.stringify(settings))
-
-      console.log('Sending processing request with settings:', settings)
-
-      // Call the backend API
+      // Add audio settings
+      const audioSettings = {
+        dryWet: settings.dryWet,
+        inputGain: settings.inputGain,
+        outputGain: settings.outputGain,
+        impulseGain: settings.impulseGain,
+        lowPassFreq: settings.lowPassFreq,
+        highPassFreq: settings.highPassFreq,
+        stereoWidth: settings.stereoWidth,
+        normalize: settings.normalize
+      }
+      formData.append('settings', JSON.stringify(audioSettings))
+      
       const response = await fetch('http://localhost:3001/process-audio', {
         method: 'POST',
         body: formData
       })
-
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
-
+      
       const result = await response.json()
       
       if (result.success) {
         setOutputFile(result.outputFile)
-        console.log('Processing completed successfully:', result)
+        setStatus('Processing completed successfully!')
       } else {
         throw new Error(result.error || 'Processing failed')
       }
-
     } catch (error) {
-      console.error('Error processing audio:', error)
-      alert(`Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setStatus(`Error: ${error}`)
     } finally {
       setIsProcessing(false)
       setProcessingProgress(0)
@@ -142,7 +148,7 @@ function App() {
             />
             
             <MixControls 
-              onProcess={handleProcess}
+              onProcess={handleProcessAudio}
               isProcessing={isProcessing}
               settings={settings}
               onSettingsChange={handleSettingsChange}

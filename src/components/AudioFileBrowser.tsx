@@ -31,13 +31,6 @@ const sampleAudioFiles: AudioFile[] = [
   }
 ]
 
-// Test audio file that works without CORS issues
-const testAudioFile: AudioFile = {
-  name: "Test Tone (Generated)",
-  path: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT",
-  duration: 2
-}
-
 const AudioFileBrowser: React.FC<AudioFileBrowserProps> = ({ selectedFile, onFileSelect }) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showSamples, setShowSamples] = useState(false)
@@ -134,20 +127,6 @@ const AudioFileBrowser: React.FC<AudioFileBrowserProps> = ({ selectedFile, onFil
             
             {showSamples && (
               <div className="mt-2 space-y-2">
-                {/* Test audio file that works without CORS */}
-                <div
-                  onClick={() => handleSampleSelect(testAudioFile)}
-                  className="p-2 border-2 border-blue-200 bg-blue-50 rounded-lg hover:bg-blue-100 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm text-blue-800">{testAudioFile.name}</p>
-                      <p className="text-xs text-blue-600">CORS-free test file</p>
-                    </div>
-                    <FileAudio className="w-4 h-4 text-blue-400" />
-                  </div>
-                </div>
-                
                 {sampleAudioFiles.map((sample, index) => (
                   <div
                     key={index}
