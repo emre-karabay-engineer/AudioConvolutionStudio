@@ -377,7 +377,45 @@ if (!fs.existsSync('Outputs')) {
   fs.mkdirSync('Outputs')
 }
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Audio processing server running on port ${port}`)
   console.log(`Health check: http://localhost:${port}/health`)
+})
+
+// Graceful shutdown handling
+const gracefulShutdown = (signal) => {
+  console.log(`\nReceived ${signal}. Starting graceful shutdown...`)
+  
+  server.close((err) => {
+    if (err) {
+      console.error('Error during server shutdown:', err)
+      process.exit(1)
+    }
+    
+    console.log('HTTP server closed successfully')
+    console.log('Audio processing server shutdown complete')
+    process.exit(0)
+  })
+  
+  // Force close after 10 seconds
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcefully shutting down')
+    process.exit(1)
+  }, 10000)
+}
+
+// Handle different termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err)
+  gracefulShutdown('uncaughtException')
+})
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+  gracefulShutdown('unhandledRejection')
 }) 

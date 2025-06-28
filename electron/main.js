@@ -7,6 +7,7 @@ const isDev = process.env.NODE_ENV === 'development'
 process.env.ELECTRON_RENDERER_URL = 'true'
 
 let backendProcess = null
+let isShuttingDown = false
 
 function startBackendServer() {
   console.log('Starting backend server...')
@@ -14,7 +15,8 @@ function startBackendServer() {
   // Start the Node.js backend server
   backendProcess = spawn('node', ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: false // Ensure the process is not detached
   })
 
   backendProcess.stdout.on('data', (data) => {
@@ -27,6 +29,7 @@ function startBackendServer() {
 
   backendProcess.on('close', (code) => {
     console.log('Backend server closed with code:', code)
+    backendProcess = null
   })
 
   backendProcess.on('error', (error) => {
@@ -42,17 +45,49 @@ function startBackendServer() {
   })
 }
 
-function stopBackendServer() {
-  if (backendProcess) {
-    console.log('Stopping backend server...')
-    backendProcess.kill('SIGTERM')
-    backendProcess = null
+async function stopBackendServer() {
+  if (backendProcess && !isShuttingDown) {
+    isShuttingDown = true
+    console.log('Stopping backend server gracefully...')
+    
+    try {
+      // First try graceful shutdown with SIGTERM
+      backendProcess.kill('SIGTERM')
+      
+      // Wait up to 5 seconds for graceful shutdown
+      let attempts = 0
+      const maxAttempts = 50 // 50 * 100ms = 5 seconds
+      
+      while (backendProcess && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        attempts++
+      }
+      
+      // If still running, force kill with SIGKILL
+      if (backendProcess) {
+        console.log('Force killing backend server...')
+        backendProcess.kill('SIGKILL')
+        
+        // Wait a bit more for the kill to take effect
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+      
+      backendProcess = null
+      console.log('Backend server stopped')
+    } catch (error) {
+      console.error('Error stopping backend server:', error)
+      // Force kill if there's an error
+      if (backendProcess) {
+        backendProcess.kill('SIGKILL')
+        backendProcess = null
+      }
+    }
   }
 }
 
 function createWindow() {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  let mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     webPreferences: {
@@ -113,29 +148,44 @@ app.whenReady().then(async () => {
   }
 })
 
+// Handle app quit gracefully
+app.on('before-quit', async (event) => {
+  if (!isShuttingDown) {
+    event.preventDefault()
+    console.log('App quitting, stopping backend server...')
+    await stopBackendServer()
+    app.exit(0)
+  }
+})
+
 // Quit when all windows are closed.
-app.on('window-all-closed', () => {
-  // Stop the backend server
-  stopBackendServer()
-  
-  // On macOS it is common for applications and their menu bar
-  // to stay active until the user quits explicitly with Cmd + Q
+app.on('window-all-closed', async () => {
   if (process.platform !== 'darwin') {
+    await stopBackendServer()
     app.quit()
   }
 })
 
-app.on('before-quit', () => {
-  // Ensure backend is stopped when app quits
-  stopBackendServer()
-})
-
+// Handle macOS activation
 app.on('activate', () => {
   // On macOS it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
+})
+
+// Handle process termination signals
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT, shutting down gracefully...')
+  await stopBackendServer()
+  process.exit(0)
+})
+
+process.on('SIGTERM', async () => {
+  console.log('Received SIGTERM, shutting down gracefully...')
+  await stopBackendServer()
+  process.exit(0)
 })
 
 // IPC handlers for file dialogs
