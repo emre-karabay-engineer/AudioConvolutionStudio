@@ -7,27 +7,57 @@ interface PreviewControlsProps {
   impulseResponse: ImpulseResponse | null
   outputFile: string | null
   onPlaybackStateChange: (playing: boolean) => void
-  setOutputFile: (file: string | null) => void
 }
 
 const PreviewControls: React.FC<PreviewControlsProps> = ({ 
   audioFile, 
   impulseResponse, 
   outputFile,
-  onPlaybackStateChange,
-  setOutputFile
+  onPlaybackStateChange
 }) => {
   const [isPlaying, setIsPlaying] = useState(false)
-  const [isPlayingOriginal, setIsPlayingOriginal] = useState(false)
   const [currentTrack, setCurrentTrack] = useState<'input' | 'ir' | 'output'>('input')
   const [volume, setVolume] = useState(80)
   const [currentTime, setCurrentTime] = useState(0)
-  const [originalCurrentTime, setOriginalCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [isElectron, setIsElectron] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
+
+  // Check if running in Electron
+  useEffect(() => {
+    const checkElectron = () => {
+      return window && (window as any).process && (window as any).process.type;
+    };
+    
+    if (checkElectron()) {
+      setIsElectron(true);
+    }
+  }, []);
+
+  // Helper function to get the correct URL for files
+  const getFileUrl = (filePath: string) => {
+    console.log('getFileUrl called with:', filePath, 'isElectron:', isElectron)
+    
+    if (isElectron && filePath.startsWith('/')) {
+      // In Electron, prefix with backend server URL
+      const fullUrl = `http://localhost:3001${filePath}`;
+      console.log('Electron mode - converted to:', fullUrl)
+      return fullUrl;
+    }
+    
+    // For web mode, if it's a relative path, make it absolute
+    if (filePath.startsWith('/') && !filePath.startsWith('http')) {
+      const fullUrl = `http://localhost:3001${filePath}`;
+      console.log('Web mode - converted to:', fullUrl)
+      return fullUrl;
+    }
+    
+    console.log('Using original path:', filePath)
+    return filePath;
+  };
 
   // Initialize audio context
   useEffect(() => {
@@ -135,21 +165,8 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
         await audioContextRef.current.resume()
       }
 
-      // Set audio source with proper URL
-      let audioUrl = currentFile.path
-      
-      // If it's a relative path, make it absolute to the backend server
-      if (audioUrl.startsWith('/')) {
-        audioUrl = `http://localhost:3001${audioUrl}`
-      }
-      
-      // For impulse responses, try to use converted 16-bit version
-      if (currentTrack === 'ir' && audioUrl.includes('/impulse-responses/')) {
-        const irPath = audioUrl.replace('http://localhost:3001/impulse-responses/', '')
-        const convertedUrl = `http://localhost:3001/convert-ir?path=${encodeURIComponent(irPath)}`
-        console.log('Using converted IR:', convertedUrl)
-        audioUrl = convertedUrl
-      }
+      // Set audio source with proper URL using the helper function
+      let audioUrl = getFileUrl(currentFile.path)
       
       // Ensure the URL is properly encoded
       try {
@@ -184,9 +201,8 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
       }
 
       // Add error handling
-      audioRef.current.onerror = (e) => {
-        console.error('Audio error:', e)
-        console.error('Audio error details:', audioRef.current?.error)
+      audioRef.current.onerror = () => {
+        console.error('Audio error:', audioRef.current?.error)
         const errorMsg = audioRef.current?.error?.message || 'Unknown error'
         console.error('Audio URL that failed:', audioUrl)
         alert(`Audio error: ${errorMsg}. This might be due to CORS restrictions or file format issues.`)
@@ -204,53 +220,22 @@ const PreviewControls: React.FC<PreviewControlsProps> = ({
         
         audioRef.current.oncanplay = () => {
           clearTimeout(timeout)
-          console.log('Audio can play, duration:', audioRef.current?.duration)
           resolve(true)
         }
         
-        audioRef.current.onerror = (e) => {
+        audioRef.current.onerror = () => {
           clearTimeout(timeout)
-          const error = audioRef.current?.error
-          console.error('Audio loading failed:', error)
-          reject(`Audio loading failed: ${error?.message || 'Unknown error'} for URL: ${audioUrl}`)
+          reject('Audio failed to load')
         }
-        
-        // Also try to load the audio
-        audioRef.current.load()
       })
 
-      // Play audio
-      if (!audioRef.current) {
-        throw new Error('Audio element not available for playback')
-      }
-      
+      // Start playing
       await audioRef.current.play()
       setIsPlaying(true)
-      console.log('Audio playback started successfully')
+      
     } catch (error) {
       console.error('Error playing audio:', error)
-      console.error('Current file:', currentFile)
-      console.error('Audio element:', audioRef.current)
-      
-      let errorMessage = 'Error playing audio. '
-      if (error instanceof Error) {
-        errorMessage += error.message
-      } else if (typeof error === 'string') {
-        errorMessage += error
-      } else {
-        errorMessage += 'Please check the file format and try again.'
-      }
-      
-      // Add helpful debugging info
-      if (errorMessage.includes('CORS')) {
-        errorMessage += '\n\nThis might be due to CORS restrictions. Try using the sample files instead.'
-      }
-      
-      if (errorMessage.includes('timeout')) {
-        errorMessage += '\n\nThe file might be too large or the server might be slow. Try a smaller file.'
-      }
-      
-      alert(errorMessage)
+      alert(`Failed to play audio: ${error}`)
       setIsPlaying(false)
     }
   }

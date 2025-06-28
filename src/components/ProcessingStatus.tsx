@@ -1,4 +1,4 @@
-import { Loader2, CheckCircle, AlertCircle, Clock } from 'lucide-react'
+import { Loader2, CheckCircle, Clock } from 'lucide-react'
 
 interface ProcessingStatusProps {
   isProcessing: boolean

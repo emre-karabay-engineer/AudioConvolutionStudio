@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import AudioFileBrowser from './components/AudioFileBrowser'
 import ImpulseResponseBrowser from './components/ImpulseResponseBrowser'
 import MixControls from './components/MixControls'
@@ -36,6 +36,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingProgress, setProcessingProgress] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [isElectron, setIsElectron] = useState(false)
   const [settings, setSettings] = useState<AudioSettings>({
     dryWet: 50,
     inputGain: 0,
@@ -47,6 +48,39 @@ function App() {
     normalize: true
   })
   const [status, setStatus] = useState<string>('')
+
+  // Check if running in Electron
+  useEffect(() => {
+    const checkElectron = () => {
+      return window && (window as any).process && (window as any).process.type;
+    };
+    
+    if (checkElectron()) {
+      setIsElectron(true);
+    }
+  }, []);
+
+  // Helper function to get the correct URL for files
+  const getFileUrl = (filePath: string) => {
+    console.log('App getFileUrl called with:', filePath, 'isElectron:', isElectron)
+    
+    if (isElectron && filePath.startsWith('/')) {
+      // In Electron, prefix with backend server URL
+      const fullUrl = `http://localhost:3001${filePath}`;
+      console.log('Electron mode - converted to:', fullUrl)
+      return fullUrl;
+    }
+    
+    // For web mode, if it's a relative path, make it absolute
+    if (filePath.startsWith('/') && !filePath.startsWith('http')) {
+      const fullUrl = `http://localhost:3001${filePath}`;
+      console.log('Web mode - converted to:', fullUrl)
+      return fullUrl;
+    }
+    
+    console.log('Using original path:', filePath)
+    return filePath;
+  };
 
   const handleProcessAudio = async () => {
     if (!audioFile || !impulseResponse) {
@@ -62,12 +96,14 @@ function App() {
       const formData = new FormData()
       
       // Fetch the audio file from its path
-      const audioResponse = await fetch(audioFile.path)
+      const audioUrl = getFileUrl(audioFile.path)
+      const audioResponse = await fetch(audioUrl)
       const audioBlob = await audioResponse.blob()
       formData.append('audioFile', audioBlob, audioFile.name)
       
       // Fetch the impulse response file from its path
-      const irResponse = await fetch(impulseResponse.path)
+      const irUrl = getFileUrl(impulseResponse.path)
+      const irResponse = await fetch(irUrl)
       const irBlob = await irResponse.blob()
       formData.append('impulseResponse', irBlob, impulseResponse.name)
       
@@ -131,6 +167,13 @@ function App() {
           </p>
         </header>
 
+        {/* Status Display */}
+        {status && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-blue-800">{status}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column */}
           <div className="space-y-6">
@@ -159,7 +202,6 @@ function App() {
               impulseResponse={impulseResponse}
               outputFile={outputFile}
               onPlaybackStateChange={handlePlaybackStateChange}
-              setOutputFile={setOutputFile}
             />
             
             <AudioVisualizer 

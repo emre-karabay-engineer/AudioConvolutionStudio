@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { Play, Zap, Sliders, Volume2 } from 'lucide-react'
 
 interface AudioSettings {

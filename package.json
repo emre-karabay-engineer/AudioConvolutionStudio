@@ -2,9 +2,9 @@
   "name": "audio-convolution-app",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
+  "type": "commonjs",
   "description": "Modern audio convolution application with real-time visualization",
-  "main": "index.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

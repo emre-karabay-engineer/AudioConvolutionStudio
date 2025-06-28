@@ -1,14 +1,10 @@
-import express from 'express'
-import multer from 'multer'
-import cors from 'cors'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import fs from 'fs'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const express = require('express')
+const multer = require('multer')
+const cors = require('cors')
+const { exec } = require('child_process')
+const { promisify } = require('util')
+const path = require('path')
+const fs = require('fs')
 
 const execAsync = promisify(exec)
 
@@ -44,34 +40,47 @@ app.get('/health', (req, res) => {
 // Get available impulse responses
 app.get('/impulse-responses', (req, res) => {
   try {
-    const irBasePath = path.join(__dirname, 'assets', 'impulse-responses', 'Sonic Palimpsest -Impulse Response Library')
+    const baseDir = path.join(__dirname, 'assets', 'impulse-responses')
+    const libraries = [
+      { folder: 'Sonic Palimpsest -Impulse Response Library', label: null },
+      { folder: 'Custom', label: 'Custom' }
+    ]
     const impulseResponses = []
-    
-    if (!fs.existsSync(irBasePath)) {
-      return res.json([])
-    }
-    
-    // Scan all subdirectories
-    const categories = fs.readdirSync(irBasePath, { withFileTypes: true })
-      .filter(dirent => dirent.isDirectory())
-      .map(dirent => dirent.name)
-    
-    categories.forEach(category => {
-      const categoryPath = path.join(irBasePath, category)
-      const files = fs.readdirSync(categoryPath)
-        .filter(file => file.endsWith('.wav'))
-        .map(file => ({
-          name: file.replace('.wav', ''),
-          path: `/impulse-responses/Sonic Palimpsest -Impulse Response Library/${category}/${file}`,
-          category: category
-        }))
-      
-      impulseResponses.push(...files)
+
+    libraries.forEach(({ folder, label }) => {
+      const libPath = path.join(baseDir, folder)
+      if (!fs.existsSync(libPath)) return
+      const categories = fs.readdirSync(libPath, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name)
+
+      // If there are subcategories (Sonic Palimpsest), scan them
+      if (categories.length > 0 && folder !== 'Custom') {
+        categories.forEach(category => {
+          const categoryPath = path.join(libPath, category)
+          const files = fs.readdirSync(categoryPath)
+            .filter(file => file.endsWith('.wav'))
+            .map(file => ({
+              name: file.replace('.wav', ''),
+              path: `/impulse-responses/${folder}/${category}/${file}`,
+              category: category
+            }))
+          impulseResponses.push(...files)
+        })
+      } else {
+        // For Custom, treat all .wav files as 'Custom' category
+        const files = fs.readdirSync(libPath)
+          .filter(file => file.endsWith('.wav'))
+          .map(file => ({
+            name: file.replace('.wav', ''),
+            path: `/impulse-responses/${folder}/${file}`,
+            category: label || folder
+          }))
+        impulseResponses.push(...files)
+      }
     })
-    
-    console.log(`Found ${impulseResponses.length} impulse responses in ${categories.length} categories`)
+
     res.json(impulseResponses)
-    
   } catch (error) {
     console.error('Error scanning impulse responses:', error)
     res.status(500).json({ error: 'Failed to scan impulse responses', details: error.message })
